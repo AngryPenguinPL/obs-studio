@@ -12,14 +12,14 @@
 
 Summary:	Free and open source software for video recording and live streaming
 Name:		obs-studio
-Version:	22.0.3
+Version:	23.0.1
 Release:	1
 License:	GPLv2+
 Group:		Video
 Url:		https://obsproject.com
 Source0:	https://github.com/obsproject/%{name}/archive/%{version}/%{name}-%{version}.tar.gz
 Patch0:		%{name}-22.0.2-linkage.patch
-BuildRequires:	cmake
+BuildRequires:	cmake ninja
 BuildRequires:	qmake5
 BuildRequires:	freetype-devel
 BuildRequires:	pkgconfig(alsa)
@@ -57,8 +57,18 @@ BuildRequires:	pkgconfig(xcb-xfixes)
 BuildRequires:	pkgconfig(xcb-xinerama)
 BuildRequires:	pkgconfig(xcomposite)
 BuildRequires:	pkgconfig(xfixes)
+BuildRequires:	pkgconfig(python3)
+BuildRequires:	pkgconfig(lua)
 BuildRequires:	swig
 BuildRequires:	mbedtls-devel
+
+#Libva is needed for enable hardware encoding via vaapi. Make it recommends due to lack of libva on some arch (penguin).
+%ifnarch %{ix86}
+Requires:	lib64va2
+%endif
+%ifarch %{ix86}
+Requires:	libva2
+%endif
 
 # Used via dlopen() so require them, otherwise they don't get installed
 Requires:	%{libobsopengl} = %{EVRD}
@@ -77,6 +87,8 @@ This package is in the Restricted repository because it requires x264 codec.
 %{_iconsdir}/hicolor/*/apps/%{oname}.png
 %dir %{_libdir}/%{oname}-plugins/
 %{_libdir}/%{oname}-plugins/*.so
+%{_libdir}/libobs-scripting.so
+%{_libdir}/obs-scripting
 
 #----------------------------------------------------------------------------
 
@@ -143,6 +155,7 @@ Development files for %{name}
 %{_libdir}/libobs-frontend-api.so
 %dir %{_libdir}/cmake/LibObs
 %{_libdir}/cmake/LibObs/*.cmake
+/usr/lib/pkgconfig/libobs.pc
 
 #----------------------------------------------------------------------------
 
@@ -160,22 +173,21 @@ Frontend-api library for %{name}.
 #----------------------------------------------------------------------------
 
 %prep
-%setup -q
-%patch0 -p1
-
+%autosetup -n %{name}-%{version} -p1
 
 %build
+
+# Clang build fine only on znver1, on other arch fail. So for znver1 use Clang, for rest GCC (penguin).
+%ifnarch znver1
 export CC=gcc
 export CXX=g++
+%endif
 
 %cmake	-DUNIX_STRUCTURE=1 \
-%ifarch x86_64
-		-DOBS_MULTIARCH_SUFFIX=64
-%else
-		-DOBS_MULTIARCH_SUFFIX=
-%endif
-%make
+	-DOBS_MULTIARCH_SUFFIX=$(echo %{_lib} |sed -e 's,^lib,,') \
+	-G Ninja
+%ninja_build
 
 
 %install
-%makeinstall_std -C build
+%ninja_install -C build
